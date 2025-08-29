@@ -1,0 +1,37 @@
+{
+  "experiment_id": "celegans_l2_15000_30_20250829_002309",
+  "timestamp": "20250829_002309",
+  "DATASET_CONFIG": {
+    "name": "celegans_l2",
+    "size": 15000
+  },
+  "CONFIG_SET0": {
+    "batch_size": 1024,
+    "learning_rate": 0.001,
+    "weight_decay": 1e-06,
+    "KNN_Embedding_dim": 512,
+    "Projection_dim": 128
+  },
+  "CONFIG_SET1": {
+    "n_neighbors": 30,
+    "epochs": 60
+  },
+  "CONFIG_SET2": {
+    "manual_recompute_knn_on_Z": false,
+    "update_knn_every": 30,
+    "adaptive_mu_temperature": false,
+    "mu_temperature": 0.3,
+    "use_bt_loss": "False",
+    "bt_loss_weight": 1,
+    "mmcr_loss_weight": 0.5
+  },
+  "CONFIG_BT": {
+    "use_learned_mu_for_view2": false,
+    "view2_mode": "cosine"
+  },
+  "CONFIG_MMCR": {
+    "lmbda": 0.3,
+    "isSoft_MMCR_global": false,
+    "isSoft_MMCR_local": false
+  }
+}
