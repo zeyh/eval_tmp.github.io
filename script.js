@@ -3,9 +3,45 @@ let umapProposed = null;
 let umapOriginal = null;
 let cellLabels = null;
 let cellMetadata = null;
+let detailedCellMetadata = null;
 let labelMapping = null;
 let uniqueCellTypes = [];
 let colorMap = {};
+
+// Color palettes based on number of unique labels (similar to Python implementation)
+const COLOR_PALETTES = {
+    // For ≤ 10 labels: tab10 equivalent
+    tab10: [
+        '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
+        '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'
+    ],
+    // For ≤ 20 labels: tab20 equivalent
+    tab20: [
+        '#1f77b4', '#aec7e8', '#ff7f0e', '#ffbb78', '#2ca02c',
+        '#98df8a', '#d62728', '#ff9896', '#9467bd', '#c5b0d5',
+        '#8c564b', '#c49c94', '#e377c2', '#f7b6d2', '#7f7f7f',
+        '#c7c7c7', '#bcbd22', '#dbdb8d', '#17becf', '#9edae5'
+    ],
+    // For ≤ 40 labels: tab20b equivalent
+    tab20b: [
+        '#393b79', '#5254a3', '#6b6ecf', '#9c9ede', '#637939',
+        '#8ca252', '#b5cf6b', '#cedb9c', '#8c6d31', '#bd9e39',
+        '#e7ba52', '#e7cb94', '#843c39', '#ad494a', '#d6616b',
+        '#e7969c', '#7b4173', '#a55194', '#ce6dbd', '#de9ed6'
+    ],
+    // For ≤ 64 labels: tab20c equivalent
+    tab20c: [
+        '#3182bd', '#6baed6', '#9ecae1', '#c6dbef', '#e6550d',
+        '#fd8d3c', '#fdae6b', '#fdd0a2', '#31a354', '#74c476',
+        '#a1d99b', '#c7e9c0', '#756bb1', '#9e9ac8', '#bcbddc',
+        '#dadaeb', '#636363', '#969696', '#bdbdbd', '#d9d9d9'
+    ],
+    // For > 64 labels: viridis equivalent (continuous)
+    viridis: [
+        '#440154', '#482878', '#3e4989', '#31688e', '#26828e',
+        '#1f9e89', '#35b779', '#6ece58', '#b5de2b', '#fde725'
+    ]
+};
 
 
 
@@ -37,7 +73,7 @@ async function loadData() {
         
         // Load all data files in parallel
         const dataPath = CONFIG.dataset.dataPath;
-        const [proposedData, originalData, labelsData, labelMappingData, cellMetadataData] = await Promise.all([
+        const [proposedData, originalData, labelsData, labelMappingData, cellMetadataData, detailedCellMetadataData] = await Promise.all([
             fetch(dataPath + 'Z_umap_proposed.json').then(response => {
                 if (!response.ok) throw new Error(`Failed to load proposed data: ${response.status}`);
                 return response.json();
@@ -57,6 +93,10 @@ async function loadData() {
             fetch(dataPath + 'cell_metadata.json').then(response => {
                 if (!response.ok) throw new Error(`Failed to load cell metadata: ${response.status}`);
                 return response.json();
+            }),
+            fetch(dataPath + 'detailed_cell_metadata.json').then(response => {
+                if (!response.ok) throw new Error(`Failed to load detailed cell metadata: ${response.status}`);
+                return response.json();
             })
         ]);
         
@@ -66,6 +106,7 @@ async function loadData() {
         cellLabels = labelsData.data;
         labelMapping = labelMappingData;
         cellMetadata = cellMetadataData;
+        detailedCellMetadata = detailedCellMetadataData;
         
         console.log('✅ Data loaded successfully:');
         console.log('  Proposed:', umapProposed.length, 'points');
@@ -73,6 +114,7 @@ async function loadData() {
         console.log('  Cell labels:', cellLabels.length, 'labels');
         console.log('  Label mapping:', Object.keys(labelMapping.label_to_idx).length, 'cell types');
         console.log('  Cell metadata:', cellMetadata.cell_ids.length, 'cells');
+        console.log('  Detailed metadata:', Object.keys(detailedCellMetadata).length, 'cells');
         
         // Process cell types
         processCellTypes();
@@ -90,18 +132,90 @@ async function loadData() {
     }
 }
 
+// Function to select color palette based on number of unique labels
+function selectColorPalette(numUniqueLabels) {
+    if (numUniqueLabels <= 10) {
+        return COLOR_PALETTES.tab10;
+    } else if (numUniqueLabels <= 20) {
+        return COLOR_PALETTES.tab20;
+    } else if (numUniqueLabels <= 40) {
+        return COLOR_PALETTES.tab20b;
+    } else if (numUniqueLabels <= 64) {
+        return COLOR_PALETTES.tab20c;
+    } else {
+        return COLOR_PALETTES.viridis;
+    }
+}
+
+// Function to generate continuous colors for many labels (viridis-like)
+function generateContinuousColors(numColors) {
+    const colors = [];
+    const viridisColors = COLOR_PALETTES.viridis;
+    
+    for (let i = 0; i < numColors; i++) {
+        const t = i / (numColors - 1);
+        const colorIndex = t * (viridisColors.length - 1);
+        const lowIndex = Math.floor(colorIndex);
+        const highIndex = Math.min(lowIndex + 1, viridisColors.length - 1);
+        const fraction = colorIndex - lowIndex;
+        
+        if (lowIndex === highIndex) {
+            colors.push(viridisColors[lowIndex]);
+        } else {
+            // Simple linear interpolation between colors
+            const lowColor = viridisColors[lowIndex];
+            const highColor = viridisColors[highIndex];
+            const interpolatedColor = interpolateColor(lowColor, highColor, fraction);
+            colors.push(interpolatedColor);
+        }
+    }
+    return colors;
+}
+
+// Helper function to interpolate between two hex colors
+function interpolateColor(color1, color2, factor) {
+    // Convert hex to RGB
+    const r1 = parseInt(color1.slice(1, 3), 16);
+    const g1 = parseInt(color1.slice(3, 5), 16);
+    const b1 = parseInt(color1.slice(5, 7), 16);
+    
+    const r2 = parseInt(color2.slice(1, 3), 16);
+    const g2 = parseInt(color2.slice(3, 5), 16);
+    const b2 = parseInt(color2.slice(5, 7), 16);
+    
+    // Interpolate
+    const r = Math.round(r1 + (r2 - r1) * factor);
+    const g = Math.round(g1 + (g2 - g1) * factor);
+    const b = Math.round(b1 + (b2 - b1) * factor);
+    
+    // Convert back to hex
+    return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+}
+
 // Process cell types and create color mapping
 function processCellTypes() {
     // Get unique cell types
     uniqueCellTypes = [...new Set(cellLabels)].sort((a, b) => a - b);
     
+    // Select appropriate color palette
+    const numUniqueLabels = uniqueCellTypes.length;
+    let selectedColors;
+    
+    if (numUniqueLabels <= 64) {
+        selectedColors = selectColorPalette(numUniqueLabels);
+    } else {
+        // For many labels, generate continuous colors
+        selectedColors = generateContinuousColors(numUniqueLabels);
+    }
+    
     // Create color mapping
     uniqueCellTypes.forEach((cellType, index) => {
-        colorMap[cellType] = CONFIG.colors[index % CONFIG.colors.length];
+        colorMap[cellType] = selectedColors[index % selectedColors.length];
     });
     
     console.log('Unique cell types:', uniqueCellTypes);
     console.log('Color mapping created for', Object.keys(colorMap).length, 'cell types');
+    console.log('Selected color palette for', numUniqueLabels, 'labels');
     
     // Log some example mappings
     if (labelMapping && uniqueCellTypes.length > 0) {
@@ -110,6 +224,13 @@ function processCellTypes() {
             const cellTypeName = labelMapping.idx_to_label[cellType.toString()];
             console.log(`  ${cellType} -> ${cellTypeName}`);
         });
+    }
+    
+    // Log some example detailed metadata
+    if (detailedCellMetadata && Object.keys(detailedCellMetadata).length > 0) {
+        console.log('Example detailed metadata:');
+        const firstCellId = Object.keys(detailedCellMetadata)[0];
+        console.log('  First cell metadata:', detailedCellMetadata[firstCellId]);
     }
 }
 
@@ -228,13 +349,17 @@ function createComparisonPlot(selectedCellType) {
             const y = cellIndices.map(i => umapData[i][1]);
             
             if (x.length > 0) {
-                // Get cell IDs for this cell type
+                // Get cell IDs and detailed metadata for this cell type
                 const cellIds = cellIndices.map(i => cellMetadata ? cellMetadata.cell_ids[i] : `Cell_${i}`);
+                const detailedData = cellIds.map(cellId => {
+                    const info = getDetailedCellInfo(cellId);
+                    return [info.cell_id, info.sample, info.num_genes_expressed, info.n_umi, info.size_factor];
+                });
                 
                 traces.push({
                     x: x,
                     y: y,
-                    customdata: cellIds,
+                    customdata: detailedData,
                     mode: 'markers',
                     type: 'scatter',
                     name: `${cellType} - ${labelMapping ? labelMapping.idx_to_label[cellType.toString()] : 'Unknown'}`,
@@ -246,7 +371,11 @@ function createComparisonPlot(selectedCellType) {
                     },
                     hovertemplate: `
                         <b>Cell Type ${cellType} - ${labelMapping ? labelMapping.idx_to_label[cellType.toString()] : 'Unknown'}</b><br>
-                        Cell ID: %{customdata}<br>
+                        Cell ID: %{customdata[0]}<br>
+                        Sample: %{customdata[1]}<br>
+                        Genes Expressed: %{customdata[2]}<br>
+                        UMI Count: %{customdata[3]}<br>
+                        Size Factor: %{customdata[4]:.3f}<br>
                         UMAP1: %{x:.3f}<br>
                         UMAP2: %{y:.3f}<br>
                         Method: ${methodName}<br>
@@ -271,8 +400,8 @@ function createComparisonPlot(selectedCellType) {
             columns: 2,
             pattern: 'independent'
         },
-        xaxis: { title: 'UMAP 1 (Proposed)', domain: [0, 0.48] },
-        yaxis: { title: 'UMAP 2 (Proposed)', domain: [0, 1] },
+        xaxis: { title: 'Proposed 1', domain: [0, 0.48] },
+        yaxis: { title: 'Proposed 2', domain: [0, 1] },
         xaxis2: { title: 'UMAP 1 (Original)', domain: [0.52, 1] },
         yaxis2: { title: 'UMAP 2 (Original)', domain: [0, 1] },
         showlegend: true,
@@ -312,13 +441,17 @@ function createSinglePlot(method, selectedCellType) {
         const y = cellIndices.map(i => umapData[i][1]);
         
         if (x.length > 0) {
-            // Get cell IDs for this cell type
+            // Get cell IDs and detailed metadata for this cell type
             const cellIds = cellIndices.map(i => cellMetadata ? cellMetadata.cell_ids[i] : `Cell_${i}`);
+            const detailedData = cellIds.map(cellId => {
+                const info = getDetailedCellInfo(cellId);
+                return [info.cell_id, info.sample, info.num_genes_expressed, info.n_umi, info.size_factor];
+            });
             
             traces.push({
                 x: x,
                 y: y,
-                customdata: cellIds,
+                customdata: detailedData,
                 mode: 'markers',
                 type: 'scatter',
                 name: `${cellType} - ${labelMapping ? labelMapping.idx_to_label[cellType.toString()] : 'Unknown'}`,
@@ -330,7 +463,11 @@ function createSinglePlot(method, selectedCellType) {
                 },
                 hovertemplate: `
                     <b>Cell Type ${cellType} - ${labelMapping ? labelMapping.idx_to_label[cellType.toString()] : 'Unknown'}</b><br>
-                    Cell ID: %{customdata}<br>
+                    Cell ID: %{customdata[0]}<br>
+                    Sample: %{customdata[1]}<br>
+                    Genes Expressed: %{customdata[2]}<br>
+                    UMI Count: %{customdata[3]}<br>
+                    Size Factor: %{customdata[4]:.3f}<br>
                     UMAP1: %{x:.3f}<br>
                     UMAP2: %{y:.3f}<br>
                     Method: ${methodName}<br>
@@ -342,7 +479,7 @@ function createSinglePlot(method, selectedCellType) {
     
     const layout = {
         title: {
-            text: `${methodName} UMAP - ${CONFIG.dataset.name} Dataset`,
+            text: `${methodName}  - ${CONFIG.dataset.name} Dataset`,
             font: { size: 20 }
         },
         xaxis: { title: 'UMAP 1' },
@@ -397,6 +534,20 @@ function showError(message) {
     
     const statsContent = document.getElementById('stats-content');
     statsContent.innerHTML = `<div class="error">${message}</div>`;
+}
+
+// Helper function to get detailed cell metadata safely
+function getDetailedCellInfo(cellId) {
+    if (!detailedCellMetadata || !detailedCellMetadata[cellId]) {
+        return {
+            cell_id: cellId,
+            sample: 'Unknown',
+            num_genes_expressed: 'N/A',
+            n_umi: 'N/A',
+            size_factor: 'N/A'
+        };
+    }
+    return detailedCellMetadata[cellId];
 }
 
 // Handle window resize

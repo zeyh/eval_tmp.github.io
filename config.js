@@ -24,13 +24,12 @@ const CONFIG = {
         }
     },
     
-    // Color palette for cell types
-    colors: [
-        '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
-        '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf',
-        '#aec7e8', '#ffbb78', '#98df8a', '#ff9896', '#c5b0d5',
-        '#c49c94', '#f7b6d2', '#c7c7c7', '#dbdb8d', '#9edae5'
-    ],
+    // Color palette selection (now handled dynamically based on number of cell types)
+    // See COLOR_PALETTES in script.js for available palettes
+    colorSelection: {
+        useDynamicPalettes: true,  // Use dynamic palette selection based on cell type count
+        fallbackPalette: 'tab10'   // Fallback if dynamic selection fails
+    },
     
     // Plotly configuration
     plotly: {
@@ -55,6 +54,7 @@ const CONFIG = {
         labels: "y.json",
         labelMapping: "label_mapping.json",
         cellMetadata: "cell_metadata.json",
+        detailedCellMetadata: "detailed_cell_metadata.json",
         config: "experiment_config.json"
     }
 };
